@@ -3,6 +3,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 
+//ETU-2 Noé
 // Constantes pour les commandes TCP
 const QString Widget::COMMAND_GET_CLASSES = "GET_CLASSES";
 const QString Widget::COMMAND_GET_OBJECTIFS = "GET_OBJECTIFS";
@@ -17,14 +18,17 @@ Widget::Widget(QWidget *parent)
     ui->setupUi(this);
     cpt = 0;
 
+    //ETU-3 Lenny
     // Configuration du serveur HTTP avec une route principale
     serveurHttp.route("/", [this](const QHttpServerRequest &request) {
         return handleHttpRequest(request);
     });
 
+    //ETU-3 Lenny
     // Connexion du signal pour gérer les nouvelles connexions TCP
     connect(socketEcouteServeur, &QTcpServer::newConnection, this, &Widget::onQTcpServer_NewConnection);
 
+    //ETU-2 Noé
     // Configuration de la base de données MySQL
     db = QSqlDatabase::addDatabase("QMYSQL");
     db.setHostName("172.18.58.7");
@@ -38,11 +42,13 @@ Widget::Widget(QWidget *parent)
         //qDebug() << "Connexion BDD réussie !";
     }
 
+    //ETU-3 Lenny
     // Timer pour réinitialiser les commandes toutes les heures
     QTimer *resetTimer = new QTimer(this);
     connect(resetTimer, &QTimer::timeout, this, &Widget::resetCommandes);
     resetTimer->start(360000); // 360000 ms = 1 heure
 
+    //ETU-3 Lenny
     // Lancement du serveur HTTP sur le port 8080
     const quint16 portHttp = 8080;
     if (serveurHttp.listen(QHostAddress::Any, portHttp)) {
@@ -51,6 +57,7 @@ Widget::Widget(QWidget *parent)
         qDebug() << "Échec du lancement automatique du serveur HTTP sur le port" << portHttp;
     }
 
+    //ETU-3 Lenny
     // Lancement du serveur TCP sur le port 8081
     const quint16 portTcp = 8081;
     if (socketEcouteServeur->listen(QHostAddress::Any, portTcp)) {
@@ -59,7 +66,7 @@ Widget::Widget(QWidget *parent)
         qDebug() << "Échec du lancement automatique du serveur TCP sur le port" << portTcp;
     }
 }
-
+//ETU-3 Lenny
 Widget::~Widget()
 {
     delete ui; // Libération de l'interface utilisateur
@@ -74,6 +81,7 @@ void Widget::resetCommandes()
     //qDebug() << "Commandes réinitialisées après 1 heure.";
 }
 
+//ETU-2 Noé
 bool Widget::insererDansBaseDeDonnees(const QJsonObject &json)
 {
     if (!db.isOpen()) return false; // Vérification de la connexion à la BDD
@@ -125,7 +133,7 @@ bool Widget::insererDansBaseDeDonnees(const QJsonObject &json)
 
     return true;
 }
-
+//ETU-3 Lenny
 void Widget::onQTcpServer_NewConnection()
 {
     // Gestion d'une nouvelle connexion TCP
@@ -142,17 +150,17 @@ void Widget::onQTcpServer_NewConnection()
         qDebug() << "Aucun client TCP connecté.";
     }
 }
-
+//ETU-3 Lenny
 void Widget::onQTcpSocket_Connected()
 {
     //qDebug() << "Connexion TCP établie.";
 }
-
+//ETU-3 Lenny
 void Widget::onQTcpSocket_Disconnected()
 {
     //qDebug() << "Client TCP déconnecté.";
 }
-
+//ETU-3 Lenny
 void Widget::onQTcpSocket_ReadyRead()
 {
     // Lecture des données reçues du client TCP
@@ -163,12 +171,12 @@ void Widget::onQTcpSocket_ReadyRead()
 
     processTcpCommand(command);
 }
-
+//ETU-3 Lenny
 void Widget::onQTcpSocket_ErrorOccurred(QAbstractSocket::SocketError socketError)
 {
     qDebug() << "Erreur sur le socket TCP : " << socketError;
 }
-
+//ETU-3 Lenny
 bool jsonPresqueEgal(const QByteArray &a, const QByteArray &b, double delta)
 {
     // Comparaison approximative de deux JSON avec une tolérance delta pour les nombres
@@ -194,7 +202,7 @@ bool jsonPresqueEgal(const QByteArray &a, const QByteArray &b, double delta)
     }
     return true;
 }
-
+//ETU-3 Lenny
 QHttpServerResponse Widget::handleHttpRequest(const QHttpServerRequest &request)
 {
     QUrl url = request.url();
@@ -242,7 +250,7 @@ QHttpServerResponse Widget::handleHttpRequest(const QHttpServerRequest &request)
 
     return QHttpServerResponse("Endpoint non trouvé", QHttpServerResponder::StatusCode::NotFound);
 }
-
+//ETU-2 Noé
 QByteArray Widget::getClassesJson()
 {
     // Récupération des classes depuis la base de données
@@ -259,7 +267,7 @@ QByteArray Widget::getClassesJson()
     QJsonDocument doc(classesArray);
     return doc.toJson(QJsonDocument::Compact);
 }
-
+//ETU-2 Noé
 QByteArray Widget::getObjectifsJson()
 {
     // Récupération des objectifs depuis la base de données
@@ -279,7 +287,7 @@ QByteArray Widget::getObjectifsJson()
     QJsonDocument doc(objectifsArray);
     return doc.toJson(QJsonDocument::Compact);
 }
-
+//ETU-2 Noé
 void Widget::processTcpCommand(const QString &command)
 {
     // Traitement des commandes TCP reçues
