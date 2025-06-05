@@ -2,42 +2,48 @@
 #include "ui_widget.h"
 #include <QJsonObject>
 #include <QJsonDocument>
+
+// Constantes pour les commandes TCP
 const QString Widget::COMMAND_GET_CLASSES = "GET_CLASSES";
 const QString Widget::COMMAND_GET_OBJECTIFS = "GET_OBJECTIFS";
-
 
 Widget::Widget(QWidget *parent)
     : QWidget(parent)
     , ui(new Ui::Widget)
-    ,ancienneCommande(nullptr)
+    , ancienneCommande(nullptr)
     , socketEcouteServeur(new QTcpServer(this))
     , socketDialogueClient(nullptr)
 {
     ui->setupUi(this);
-    cpt=0;
-    // Serveur HTTP
+    cpt = 0;
+
+    // Configuration du serveur HTTP avec une route principale
     serveurHttp.route("/", [this](const QHttpServerRequest &request) {
         return handleHttpRequest(request);
     });
 
-    // Connexion du signal de nouvelle connexion pour le serveur TCP
+    // Connexion du signal pour gérer les nouvelles connexions TCP
     connect(socketEcouteServeur, &QTcpServer::newConnection, this, &Widget::onQTcpServer_NewConnection);
 
+    // Configuration de la base de données MySQL
     db = QSqlDatabase::addDatabase("QMYSQL");
     db.setHostName("172.18.58.7");
     db.setDatabaseName("Projet_Drone_test");
-    db.setUserName("snir"); // Change selon tes identifiants
-    db.setPassword("snir"); // Change aussi ici
+    db.setUserName("snir"); // identifiants base de données
+    db.setPassword("snir"); // mot de passe base de données
 
     if (!db.open()) {
         qDebug() << "Erreur de connexion BDD :" << db.lastError().text();
     } else {
         //qDebug() << "Connexion BDD réussie !";
     }
+
+    // Timer pour réinitialiser les commandes toutes les heures
     QTimer *resetTimer = new QTimer(this);
     connect(resetTimer, &QTimer::timeout, this, &Widget::resetCommandes);
-    resetTimer->start(360000); // 1 heure = 3600000 ms
+    resetTimer->start(360000); // 360000 ms = 1 heure
 
+    // Lancement du serveur HTTP sur le port 8080
     const quint16 portHttp = 8080;
     if (serveurHttp.listen(QHostAddress::Any, portHttp)) {
         qDebug() << "Serveur HTTP lancé automatiquement sur le port" << portHttp;
@@ -45,7 +51,7 @@ Widget::Widget(QWidget *parent)
         qDebug() << "Échec du lancement automatique du serveur HTTP sur le port" << portHttp;
     }
 
-    // Lancement automatique du serveur TCP sur le port 8081
+    // Lancement du serveur TCP sur le port 8081
     const quint16 portTcp = 8081;
     if (socketEcouteServeur->listen(QHostAddress::Any, portTcp)) {
         qDebug() << "Serveur TCP lancé automatiquement sur le port" << portTcp;
@@ -56,97 +62,50 @@ Widget::Widget(QWidget *parent)
 
 Widget::~Widget()
 {
-    delete ui;
+    delete ui; // Libération de l'interface utilisateur
 }
 
 void Widget::resetCommandes()
 {
-    cpt = 0;
-    ancienneCommande.clear(); // vide les anciennes données
-    ui->textEditLog->clear();
+    cpt = 0; // Réinitialisation du compteur
+    ancienneCommande.clear(); // Vidage des anciennes commandes
+    ui->textEditLog->clear(); // Effacement du log
     ui->textEditLog->append("Remise à zéro des commandes.");
     //qDebug() << "Commandes réinitialisées après 1 heure.";
 }
 
-// bool Widget::insererDansBaseDeDonnees(const QJsonObject &json) {
-//     if (!db.isOpen()) return false;
-
-//     QSqlQuery query;
-
-//     // 1. Insérer dans SIMULATIONS
-//     query.prepare("INSERT INTO SIMULATIONS (date, duree, id_utilisateur) VALUES (CURRENT_DATE(), ?, ?)");
-//     query.addBindValue(json["Duree"].toInt());
-//     query.addBindValue(12); // ou autre utilisateur valide
-//     if (!query.exec()) {
-//         qDebug() << "Erreur insertion SIMULATIONS:" << query.lastError().text();
-//         return false;
-//     }
-//     int id_simulation = query.lastInsertId().toInt();
-
-//     // 2. Convertir vent en enum
-//     QString ventStr = "faible";
-//     int ventVal = json["Vent"].toInt();
-//     if (ventVal >= 60) ventStr = "fort";
-//     else if (ventVal >= 30) ventStr = "moyen";
-
-//     // 3. Insérer dans SCENARIOS
-//     query.prepare("INSERT INTO SCENARIOS (point_apparition, vent, pluie, temperature, id_simulation) VALUES (?, ?, ?, ?, ?)");
-//     query.addBindValue(json["Scenario"].toString().trimmed());
-//     query.addBindValue(ventStr);
-//     query.addBindValue(json["Pluie"].toInt());
-//     query.addBindValue(json["Celsius"].toDouble());
-//     query.addBindValue(id_simulation);
-//     if (!query.exec()) {
-//         qDebug() << "Erreur insertion SCENARIOS:" << query.lastError().text();
-//         return false;
-//     }
-//     int id_scenario = query.lastInsertId().toInt();
-
-//     // 4. Insérer dans DRONES
-//     query.prepare("INSERT INTO DRONES (type_drone, description, id_scenario) VALUES (?, ?, ?)");
-//     query.addBindValue(json["Drone"].toString().trimmed());
-//     query.addBindValue("Drone reçu depuis JSON");
-//     query.addBindValue(id_scenario);
-//     if (!query.exec()) {
-//         qDebug() << "Erreur insertion DRONES:" << query.lastError().text();
-//         return false;
-//     }
-
-//     return true;
-// }
-
-bool Widget::insererDansBaseDeDonnees(const QJsonObject &json) {
-    if (!db.isOpen()) return false;
+bool Widget::insererDansBaseDeDonnees(const QJsonObject &json)
+{
+    if (!db.isOpen()) return false; // Vérification de la connexion à la BDD
 
     QSqlQuery query;
 
-    // 1. SIMULATIONS
+    // 1. Insertion dans la table SIMULATIONS
     bool dureeOk;
     int duree = json["Duree"].toString().toInt(&dureeOk);
     if (!dureeOk) {
         //qDebug() << "Erreur de conversion de la durée";
         return false;
     }
-
     query.prepare("INSERT INTO SIMULATIONS (date, duree, id_utilisateur) VALUES (CURRENT_DATE(), ?, ?)");
     query.addBindValue(duree);
-    query.addBindValue(12); // id_utilisateur à adapter
+    query.addBindValue(12); // ID utilisateur fixe, à adapter
     if (!query.exec()) {
         qDebug() << "Erreur SIMULATIONS:" << query.lastError().text();
         return false;
     }
     int id_simulation = query.lastInsertId().toInt();
 
-    // 2. SCENARIOS
+    // 2. Insertion dans la table SCENARIOS avec conversion des données
     double temp = json["Celsius"].toString().toDouble();
     int pluie = json["Pluie"].toString().toInt();
     int vent = json["Vent"].toString().toInt();
 
     query.prepare("INSERT INTO SCENARIOS (point_apparition, vent, pluie, temperature, id_simulation) VALUES (?, ?, ?, ?, ?)");
     query.addBindValue(json["Scenario"].toString().trimmed());
-    query.addBindValue(vent);        // vent brut
-    query.addBindValue(pluie);       // pluie exacte
-    query.addBindValue(temp);        // température
+    query.addBindValue(vent); // Vent brut
+    query.addBindValue(pluie); // Pluie exacte
+    query.addBindValue(temp); // Température
     query.addBindValue(id_simulation);
     if (!query.exec()) {
         qDebug() << "Erreur SCENARIOS:" << query.lastError().text();
@@ -154,7 +113,7 @@ bool Widget::insererDansBaseDeDonnees(const QJsonObject &json) {
     }
     int id_scenario = query.lastInsertId().toInt();
 
-    // 3. DRONES
+    // 3. Insertion dans la table DRONES
     query.prepare("INSERT INTO DRONES (type_drone, description, id_scenario) VALUES (?, ?, ?)");
     query.addBindValue(json["Drone"].toString().trimmed());
     query.addBindValue("Drone reçu via JSON");
@@ -167,28 +126,9 @@ bool Widget::insererDansBaseDeDonnees(const QJsonObject &json) {
     return true;
 }
 
-
-
-void Widget::on_pushButtonLaunchWeb_clicked()
-{
-    // // Lance le serveur HTTP
-    // if (serveurHttp.listen(QHostAddress::Any, ui->spinBoxPortHttp->value())) {
-    //     qDebug() << "Lancement du serveur HTTP sur le port" << ui->spinBoxPortHttp->value();
-    // } else {
-    //     qDebug() << "Problème de lancement du serveur HTTP sur le port" << ui->spinBoxPortHttp->value();
-    // }
-
-    // // Lance le serveur TCP
-    // if (socketEcouteServeur->listen(QHostAddress::Any, ui->spinBoxPortTCP->value())) {
-    //     qDebug() << "Lancement du serveur TCP sur le port" << ui->spinBoxPortTCP->value();
-    // } else {
-    //     qDebug() << "Problème de lancement du serveur TCP sur le port" << ui->spinBoxPortTCP->value();
-    // }
-}
-
 void Widget::onQTcpServer_NewConnection()
 {
-    // Récupère la nouvelle connexion TCP
+    // Gestion d'une nouvelle connexion TCP
     QTcpSocket *newClient = socketEcouteServeur->nextPendingConnection();
     if (newClient) {
         qDebug() << "Client TCP connecté : " << newClient->peerAddress().toString() << ":" << newClient->peerPort();
@@ -215,7 +155,7 @@ void Widget::onQTcpSocket_Disconnected()
 
 void Widget::onQTcpSocket_ReadyRead()
 {
-    // Lecture des données du client
+    // Lecture des données reçues du client TCP
     QByteArray data = socketDialogueClient->readAll();
     QString command = QString::fromUtf8(data).trimmed();
 
@@ -223,6 +163,7 @@ void Widget::onQTcpSocket_ReadyRead()
 
     processTcpCommand(command);
 }
+
 void Widget::onQTcpSocket_ErrorOccurred(QAbstractSocket::SocketError socketError)
 {
     qDebug() << "Erreur sur le socket TCP : " << socketError;
@@ -230,6 +171,7 @@ void Widget::onQTcpSocket_ErrorOccurred(QAbstractSocket::SocketError socketError
 
 bool jsonPresqueEgal(const QByteArray &a, const QByteArray &b, double delta)
 {
+    // Comparaison approximative de deux JSON avec une tolérance delta pour les nombres
     QJsonDocument docA = QJsonDocument::fromJson(a);
     QJsonDocument docB = QJsonDocument::fromJson(b);
 
@@ -257,17 +199,15 @@ QHttpServerResponse Widget::handleHttpRequest(const QHttpServerRequest &request)
 {
     QUrl url = request.url();
 
-    // Route pour les classes
+    // Gestion des routes HTTP
     if (url.path() == "/classes" && request.method() == QHttpServerRequest::Method::Get) {
         return QHttpServerResponse(getClassesJson(), "application/json");
     }
 
-    // Route pour les objectifs
     if (url.path() == "/objectifs" && request.method() == QHttpServerRequest::Method::Get) {
         return QHttpServerResponse(getObjectifsJson(), "application/json");
     }
 
-    // Route principale (ancienne fonctionnalité)
     if (url.path() == "/" && request.method() == QHttpServerRequest::Method::Get) {
         QUrlQuery query(url);
         QJsonObject json;
@@ -305,6 +245,7 @@ QHttpServerResponse Widget::handleHttpRequest(const QHttpServerRequest &request)
 
 QByteArray Widget::getClassesJson()
 {
+    // Récupération des classes depuis la base de données
     QJsonArray classesArray;
     QSqlQuery query("SELECT id_classes, nom_classe FROM CLASSES");
 
@@ -321,6 +262,7 @@ QByteArray Widget::getClassesJson()
 
 QByteArray Widget::getObjectifsJson()
 {
+    // Récupération des objectifs depuis la base de données
     QJsonArray objectifsArray;
     QSqlQuery query("SELECT id_objectif, type_objectif, nom_objectif, description, id_scenario FROM OBJECTIFS");
 
@@ -340,6 +282,7 @@ QByteArray Widget::getObjectifsJson()
 
 void Widget::processTcpCommand(const QString &command)
 {
+    // Traitement des commandes TCP reçues
     if (command == COMMAND_GET_CLASSES) {
         QByteArray response = getClassesJson();
         socketDialogueClient->write(response + "\n");
